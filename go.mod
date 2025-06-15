@@ -2,7 +2,10 @@ module github.com/Rohan-Shah-312003/tui-gpt
 
 go 1.24.4
 
-require github.com/rivo/tview v0.0.0-20250501113434-0c592cd31026
+require (
+	github.com/joho/godotenv v1.5.1
+	github.com/rivo/tview v0.0.0-20250501113434-0c592cd31026
+)
 
 require (
 	github.com/gdamore/encoding v1.0.0 // indirect

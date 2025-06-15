@@ -10,7 +10,7 @@ import (
 )
 
 const apiURL = "https://api.groq.com/openai/v1/chat/completions"
-const model = "mixtral-8x7b-32768"
+const model = "llama3-70b-8192"
 
 func SendPrompt(prompt string) (string, error) {
 	apiKey := os.Getenv("GROQ_API_KEY")
@@ -57,7 +57,7 @@ func SendPrompt(prompt string) (string, error) {
 	}
 
 	if len(parsed.Choices) == 0 {
-		return "", fmt.Errorf("No response recieved")
+		return "", fmt.Errorf("no response recieved")
 	}
 
 	return parsed.Choices[0].Message.Content, nil
