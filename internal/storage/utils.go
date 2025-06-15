@@ -1,4 +1,3 @@
-// internal/storage/utils.go
 package storage
 
 import (
