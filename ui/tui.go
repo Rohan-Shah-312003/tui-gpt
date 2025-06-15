@@ -71,7 +71,7 @@ func createMainLayout() *tview.Flex {
 	// Sidebar with conversation stats
 	sidebar = tview.NewTextView().
 		SetDynamicColors(true).
-		SetScrollable(false)
+		SetScrollable(true)
 	sidebar.SetBorder(true).
 		SetTitle(" Stats ").
 		SetTitleAlign(tview.AlignCenter).
@@ -96,7 +96,8 @@ func createMainLayout() *tview.Flex {
 	inputField = tview.NewInputField().
 		SetLabel("💬 You: ").
 		SetFieldWidth(0).
-		SetPlaceholder("Type your message here... (Press Enter to send)")
+		SetPlaceholder("Type your message here... (Press Enter to send)").
+		SetFieldTextColor(tcell.ColorBlack)
 	inputField.SetBorder(true).
 		SetTitle(" Input ").
 		SetTitleAlign(tview.AlignLeft).
@@ -106,19 +107,22 @@ func createMainLayout() *tview.Flex {
 	buttonFlex := tview.NewFlex().SetDirection(tview.FlexColumn)
 
 	sendButton := tview.NewButton("📤 Send").
-		SetSelectedFunc(sendMessage)
+		SetSelectedFunc(sendMessage).
+		SetLabelColor(tcell.ColorBlack)
 	sendButton.SetBorder(true).
 		SetBorderColor(tcell.ColorGreen)
 
 	clearButton := tview.NewButton("🗑️  Clear").
-		SetSelectedFunc(clearChat)
+		SetSelectedFunc(clearChat).
+		SetLabelColor(tcell.ColorBlack)
 	clearButton.SetBorder(true).
 		SetBorderColor(tcell.ColorOrange)
 
 	quitButton := tview.NewButton("❌ Quit").
 		SetSelectedFunc(func() {
 			app.Stop()
-		})
+		}).
+		SetLabelColor(tcell.ColorBlack)
 	quitButton.SetBorder(true).
 		SetBorderColor(tcell.ColorRed)
 
