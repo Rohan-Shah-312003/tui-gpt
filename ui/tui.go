@@ -242,10 +242,12 @@ func createHelpModal() *tview.Modal {
 		AddButtons([]string{"Close"}).
 		SetDoneFunc(func(buttonIndex int, buttonLabel string) {
 			pages.HidePage("help")
-		})
+		}).
+		SetTextColor(tcell.ColorBlack)
 
 	modal.SetBorderColor(tcell.ColorYellow)
 	modal.SetTitle(" Help & Instructions ")
+	modal.SetTitleColor(tcell.ColorBlack)
 
 	return modal
 }
