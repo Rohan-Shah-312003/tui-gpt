@@ -1,3 +1,4 @@
+// ui/tui.go
 package ui
 
 import (
@@ -6,28 +7,36 @@ import (
 	"time"
 
 	"github.com/Rohan-Shah-312003/tui-gpt/internal/groq"
+	"github.com/Rohan-Shah-312003/tui-gpt/internal/storage"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
 var (
-	app              *tview.Application
-	pages            *tview.Pages
-	chatHistory      []ChatMessage
-	conversationView *tview.TextView
-	inputField       *tview.InputField
-	statusBar        *tview.TextView
-	sidebar          *tview.TextView
+	app               *tview.Application
+	pages             *tview.Pages
+	chatHistory       []storage.ChatMessage
+	conversationView  *tview.TextView
+	inputField        *tview.InputField
+	statusBar         *tview.TextView
+	sidebar           *tview.TextView
+	chatList          *tview.List
+	storageManager    *storage.Storage
+	currentSession    *storage.ChatSession
+	isShowingChatList bool
 )
-
-type ChatMessage struct {
-	Role      string
-	Content   string
-	Timestamp time.Time
-}
 
 func StartApp() {
 	app = tview.NewApplication()
+
+	// Initialize storage
+	storageManager = storage.NewStorage()
+	if err := storageManager.Initialize(); err != nil {
+		panic(fmt.Sprintf("Failed to initialize storage: %v", err))
+	}
+
+	// Create new session
+	startNewChat()
 
 	// Create the main layout
 	setupUI()
@@ -41,6 +50,15 @@ func StartApp() {
 	}
 }
 
+func startNewChat() {
+	currentSession = &storage.ChatSession{
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Messages:  []storage.ChatMessage{},
+	}
+	chatHistory = []storage.ChatMessage{}
+}
+
 func setupUI() {
 	// Create pages container
 	pages = tview.NewPages()
@@ -51,9 +69,13 @@ func setupUI() {
 	// Create help modal
 	helpModal := createHelpModal()
 
+	// Create chat list modal
+	chatListModal := createChatListModal()
+
 	// Add pages
 	pages.AddPage("main", mainLayout, true, true)
 	pages.AddPage("help", helpModal, true, false)
+	pages.AddPage("chatlist", chatListModal, true, false)
 }
 
 func createMainLayout() *tview.Flex {
@@ -61,7 +83,7 @@ func createMainLayout() *tview.Flex {
 	header := tview.NewTextView().
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignCenter).
-		SetText("[::bu]🤖 TUI-GPT Chat Assistant [::-]\n[dim]Press Ctrl+H for help, Ctrl+C to quit")
+		SetText("[::bu]🤖 TUI-GPT Chat Assistant [::-]\n[dim]Press Ctrl+H for help, Ctrl+O for chat history, Ctrl+C to quit")
 	header.SetBorder(true).
 		SetBorderPadding(0, 0, 1, 1).
 		SetTitle(" Welcome ").
@@ -112,7 +134,28 @@ func createMainLayout() *tview.Flex {
 	sendButton.SetBorder(true).
 		SetBorderColor(tcell.ColorGreen)
 
-	clearButton := tview.NewButton("🗑️  Clear").
+	newChatButton := tview.NewButton("📝 New").
+		SetSelectedFunc(func() {
+			saveCurrentChat()
+			startNewChat()
+			updateConversationView()
+			updateSidebar()
+			updateStatus("[blue]🆕 Started new chat!")
+		}).
+		SetLabelColor(tcell.ColorBlack)
+	newChatButton.SetBorder(true).
+		SetBorderColor(tcell.ColorBlue)
+
+	saveChatButton := tview.NewButton("💾 Save").
+		SetSelectedFunc(func() {
+			saveCurrentChat()
+			updateStatus("[green]💾 Chat saved!")
+		}).
+		SetLabelColor(tcell.ColorBlack)
+	saveChatButton.SetBorder(true).
+		SetBorderColor(tcell.ColorPurple)
+
+	clearButton := tview.NewButton("🗑️ Clear").
 		SetSelectedFunc(clearChat).
 		SetLabelColor(tcell.ColorBlack)
 	clearButton.SetBorder(true).
@@ -120,6 +163,7 @@ func createMainLayout() *tview.Flex {
 
 	quitButton := tview.NewButton("❌ Quit").
 		SetSelectedFunc(func() {
+			saveCurrentChat()
 			app.Stop()
 		}).
 		SetLabelColor(tcell.ColorBlack)
@@ -127,6 +171,8 @@ func createMainLayout() *tview.Flex {
 		SetBorderColor(tcell.ColorRed)
 
 	buttonFlex.AddItem(sendButton, 0, 1, false).
+		AddItem(newChatButton, 0, 1, false).
+		AddItem(saveChatButton, 0, 1, false).
 		AddItem(clearButton, 0, 1, false).
 		AddItem(quitButton, 0, 1, false)
 
@@ -157,27 +203,37 @@ func createMainLayout() *tview.Flex {
 
 	return mainLayout
 }
+
 func createHelpModal() *tview.Modal {
 	helpText := `🚀 TUI-GPT Help
 
 📋 Key Bindings:
 • Enter        - Send message
-• Ctrl+C       - Quit application
+• Ctrl+C       - Quit application (auto-saves)
 • Ctrl+H       - Show/hide this help
 • Ctrl+L       - Clear conversation
+• Ctrl+N       - Start new chat
+• Ctrl+S       - Save current chat
+• Ctrl+O       - Open chat history
 • Tab          - Navigate between elements
 • Shift+Tab    - Navigate backwards
 • Ctrl+U       - Clear input field
 
+💾 Chat Storage:
+• Chats are automatically saved locally
+• Access previous chats with Ctrl+O
+• Each chat gets a title from first message
+• Delete unwanted chats from history
+
 💡 Tips:
 • Type your message and press Enter
-• Use clear button to start fresh
-• Scroll through conversation history
-• Check stats in the sidebar
+• Use "New" button to start fresh chat
+• All chats are saved in 'chat_history' folder
+• Chat titles are auto-generated from content
 
 🎨 Features:
 • Real-time chat with AI
-• Message history tracking
+• Persistent message history
 • Beautiful colored interface
 • Responsive design`
 
@@ -188,11 +244,90 @@ func createHelpModal() *tview.Modal {
 			pages.HidePage("help")
 		})
 
-	// Now use modal to call Box methods without chaining
 	modal.SetBorderColor(tcell.ColorYellow)
 	modal.SetTitle(" Help & Instructions ")
 
 	return modal
+}
+
+func createChatListModal() *tview.Flex {
+	// Create chat list
+	chatList = tview.NewList().
+		ShowSecondaryText(true).
+		SetHighlightFullLine(true).
+		SetSelectedFunc(func(index int, mainText, secondaryText string, shortcut rune) {
+			loadChatFromList(index)
+		})
+
+	chatList.SetBorder(true).
+		SetTitle(" Chat History ").
+		SetBorderColor(tcell.ColorCyan)
+
+	// Instructions
+	instructions := tview.NewTextView().
+		SetDynamicColors(true).
+		SetText("[yellow]📚 Chat History\n\n[white]• Use ↑/↓ to navigate\n• Press Enter to load chat\n• Press 'd' to delete selected\n• Press Escape to close").
+		SetTextAlign(tview.AlignLeft)
+	instructions.SetBorder(true).
+		SetTitle(" Instructions ").
+		SetBorderColor(tcell.ColorGreen)
+
+	// Button area for chat list
+	chatButtonFlex := tview.NewFlex().SetDirection(tview.FlexColumn)
+
+	loadButton := tview.NewButton("📂 Load").
+		SetSelectedFunc(func() {
+			index := chatList.GetCurrentItem()
+			if index >= 0 {
+				loadChatFromList(index)
+			}
+		})
+
+	deleteButton := tview.NewButton("🗑️ Delete").
+		SetSelectedFunc(func() {
+			index := chatList.GetCurrentItem()
+			if index >= 0 {
+				deleteChatFromList(index)
+			}
+		})
+
+	closeButton := tview.NewButton("❌ Close").
+		SetSelectedFunc(func() {
+			pages.HidePage("chatlist")
+			isShowingChatList = false
+		})
+
+	chatButtonFlex.AddItem(loadButton, 0, 1, false).
+		AddItem(deleteButton, 0, 1, false).
+		AddItem(closeButton, 0, 1, false)
+
+	// Complete chat list layout
+	chatListLayout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(instructions, 8, 1, false).
+		AddItem(chatList, 0, 1, true).
+		AddItem(chatButtonFlex, 3, 1, false)
+
+	// Set up key bindings for chat list
+	chatList.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyEscape:
+			pages.HidePage("chatlist")
+			isShowingChatList = false
+			return nil
+		case tcell.KeyRune:
+			switch event.Rune() {
+			case 'd', 'D':
+				index := chatList.GetCurrentItem()
+				if index >= 0 {
+					deleteChatFromList(index)
+				}
+				return nil
+			}
+		}
+		return event
+	})
+
+	return chatListLayout
 }
 
 func setupKeyBindings() {
@@ -211,17 +346,41 @@ func setupKeyBindings() {
 	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
 		case tcell.KeyCtrlH:
-			if pages.HasPage("help") {
-				name, _ := pages.GetFrontPage()
-				if name == "help" {
-					pages.HidePage("help")
-				} else {
-					pages.ShowPage("help")
+			if !isShowingChatList {
+				if pages.HasPage("help") {
+					name, _ := pages.GetFrontPage()
+					if name == "help" {
+						pages.HidePage("help")
+					} else {
+						pages.ShowPage("help")
+					}
 				}
 			}
 			return nil
 		case tcell.KeyCtrlL:
-			clearChat()
+			if !isShowingChatList {
+				clearChat()
+			}
+			return nil
+		case tcell.KeyCtrlN:
+			if !isShowingChatList {
+				saveCurrentChat()
+				startNewChat()
+				updateConversationView()
+				updateSidebar()
+				updateStatus("[blue]🆕 Started new chat!")
+			}
+			return nil
+		case tcell.KeyCtrlS:
+			if !isShowingChatList {
+				saveCurrentChat()
+				updateStatus("[green]💾 Chat saved!")
+			}
+			return nil
+		case tcell.KeyCtrlO:
+			if !isShowingChatList {
+				showChatList()
+			}
 			return nil
 		}
 		return event
@@ -236,12 +395,13 @@ func sendMessage() {
 	}
 
 	// Add user message to history
-	userMsg := ChatMessage{
+	userMsg := storage.ChatMessage{
 		Role:      "user",
 		Content:   prompt,
 		Timestamp: time.Now(),
 	}
 	chatHistory = append(chatHistory, userMsg)
+	currentSession.Messages = chatHistory
 
 	// Clear input and update display
 	inputField.SetText("")
@@ -255,7 +415,7 @@ func sendMessage() {
 
 		app.QueueUpdateDraw(func() {
 			if err != nil {
-				errorMsg := ChatMessage{
+				errorMsg := storage.ChatMessage{
 					Role:      "error",
 					Content:   fmt.Sprintf("Error: %v", err),
 					Timestamp: time.Now(),
@@ -263,7 +423,7 @@ func sendMessage() {
 				chatHistory = append(chatHistory, errorMsg)
 				updateStatus("[red]❌ Error occurred!")
 			} else {
-				aiMsg := ChatMessage{
+				aiMsg := storage.ChatMessage{
 					Role:      "assistant",
 					Content:   reply,
 					Timestamp: time.Now(),
@@ -272,8 +432,12 @@ func sendMessage() {
 				updateStatus("[green]✅ Response received!")
 			}
 
+			currentSession.Messages = chatHistory
 			updateConversationView()
 			updateSidebar()
+
+			// Auto-save after each exchange
+			go saveCurrentChat()
 
 			// Reset status after 3 seconds
 			go func() {
@@ -287,7 +451,8 @@ func sendMessage() {
 }
 
 func clearChat() {
-	chatHistory = []ChatMessage{}
+	chatHistory = []storage.ChatMessage{}
+	currentSession.Messages = chatHistory
 	updateConversationView()
 	updateSidebar()
 	updateStatus("[blue]🧹 Chat cleared!")
@@ -300,6 +465,92 @@ func clearChat() {
 	}()
 }
 
+func saveCurrentChat() {
+	if len(chatHistory) == 0 {
+		return // Don't save empty chats
+	}
+
+	currentSession.Messages = chatHistory
+	if err := storageManager.SaveChat(currentSession); err != nil {
+		app.QueueUpdateDraw(func() {
+			updateStatus(fmt.Sprintf("[red]❌ Save failed: %v", err))
+		})
+	}
+}
+
+func showChatList() {
+	summaries, err := storageManager.GetChatSummaries()
+	if err != nil {
+		updateStatus(fmt.Sprintf("[red]❌ Failed to load chats: %v", err))
+		return
+	}
+
+	chatList.Clear()
+
+	if len(summaries) == 0 {
+		chatList.AddItem("No saved chats", "Start a conversation to create your first chat!", 0, nil)
+	} else {
+		for _, summary := range summaries {
+			mainText := summary.Title
+			secondaryText := fmt.Sprintf("%d messages • Updated: %s",
+				summary.MessageCount,
+				summary.UpdatedAt.Format("Jan 2, 15:04"))
+			chatList.AddItem(mainText, secondaryText, 0, nil)
+		}
+	}
+
+	pages.ShowPage("chatlist")
+	isShowingChatList = true
+	app.SetFocus(chatList)
+}
+
+func loadChatFromList(index int) {
+	summaries, err := storageManager.GetChatSummaries()
+	if err != nil || index >= len(summaries) {
+		updateStatus("[red]❌ Failed to load chat")
+		return
+	}
+
+	// Save current chat before loading new one
+	saveCurrentChat()
+
+	// Load selected chat
+	session, err := storageManager.LoadChat(summaries[index].ID)
+	if err != nil {
+		updateStatus(fmt.Sprintf("[red]❌ Failed to load chat: %v", err))
+		return
+	}
+
+	currentSession = session
+	chatHistory = session.Messages
+
+	updateConversationView()
+	updateSidebar()
+	updateStatus("[green]📂 Chat loaded successfully!")
+
+	pages.HidePage("chatlist")
+	isShowingChatList = false
+	app.SetFocus(inputField)
+}
+
+func deleteChatFromList(index int) {
+	summaries, err := storageManager.GetChatSummaries()
+	if err != nil || index >= len(summaries) {
+		updateStatus("[red]❌ Failed to delete chat")
+		return
+	}
+
+	if err := storageManager.DeleteChat(summaries[index].ID); err != nil {
+		updateStatus(fmt.Sprintf("[red]❌ Failed to delete chat: %v", err))
+		return
+	}
+
+	updateStatus("[yellow]🗑️ Chat deleted!")
+
+	// Refresh the chat list
+	showChatList()
+}
+
 func updateConversationView() {
 	var content strings.Builder
 
@@ -307,6 +558,8 @@ func updateConversationView() {
 		content.WriteString("[dim]🌟 Welcome to TUI-GPT!\n\n")
 		content.WriteString("Start a conversation by typing a message below.\n")
 		content.WriteString("Ask me anything - I'm here to help! 🤖[white]\n\n")
+		content.WriteString("[cyan]💾 Your chats are automatically saved!\n")
+		content.WriteString("Press Ctrl+O to access your chat history.[white]\n\n")
 	}
 
 	for i, msg := range chatHistory {
@@ -362,18 +615,24 @@ func updateSidebar() {
 	}
 
 	content.WriteString("\n[cyan]🕒 Session Info[white]\n\n")
-	content.WriteString(fmt.Sprintf("⏰ Started: %s\n", time.Now().Format("15:04")))
+	if currentSession != nil {
+		content.WriteString(fmt.Sprintf("📝 Created: %s\n", currentSession.CreatedAt.Format("Jan 2, 15:04")))
+		if currentSession.Title != "" {
+			content.WriteString(fmt.Sprintf("🏷️  Title: %s\n", currentSession.Title))
+		}
+	}
 
 	if len(chatHistory) > 0 {
 		lastMsg := chatHistory[len(chatHistory)-1]
-		content.WriteString(fmt.Sprintf("📝 Last: %s\n", lastMsg.Timestamp.Format("15:04:05")))
+		content.WriteString(fmt.Sprintf("⏰ Last: %s\n", lastMsg.Timestamp.Format("15:04:05")))
 	}
 
 	content.WriteString("\n[magenta]🎯 Quick Tips[white]\n\n")
-	content.WriteString("• Press Enter to send\n")
+	content.WriteString("• Enter to send\n")
+	content.WriteString("• Ctrl+O for history\n")
+	content.WriteString("• Ctrl+N for new chat\n")
+	content.WriteString("• Ctrl+S to save\n")
 	content.WriteString("• Ctrl+H for help\n")
-	content.WriteString("• Ctrl+L to clear\n")
-	content.WriteString("• Ctrl+C to quit\n")
 
 	sidebar.SetText(content.String())
 }
