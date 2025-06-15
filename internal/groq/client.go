@@ -12,7 +12,7 @@ import (
 const apiURL = "https://api.groq.com/openai/v1/chat/completions"
 const model = "mixtral-8x7b-32768"
 
-func sendPrompt(prompt string) (string, error) {
+func SendPrompt(prompt string) (string, error) {
 	apiKey := os.Getenv("GROQ_API_KEY")
 	if apiKey == "" {
 		return "", fmt.Errorf("API variable not set")

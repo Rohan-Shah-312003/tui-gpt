@@ -1,14 +1,15 @@
 package ui
 
 import (
-	"github.com/Rohan-Shah-312003/tui-gpt/internal/groq"
 	"github.com/rivo/tview"
+
+	"github.com/Rohan-Shah-312003/tui-gpt/internal/groq"
 )
 
 func StartApp() {
 	app := tview.NewApplication()
 	input := tview.NewInputField().
-		SetLabel("Prompt").
+		SetLabel("Prompt: ").
 		SetFieldWidth(0)
 
 	output := tview.NewTextView().
@@ -22,7 +23,7 @@ func StartApp() {
 		AddButton("Send", func() {
 			prompt := input.GetText()
 			if prompt == "" {
-				input.SetText("[red]Empty Prompt!")
+				output.SetText("[red]Empty Prompt!")
 				return
 			}
 
