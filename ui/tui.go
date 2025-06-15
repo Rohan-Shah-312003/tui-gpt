@@ -261,7 +261,7 @@ func createChatListModal() *tview.Flex {
 
 	chatList.SetBorder(true).
 		SetTitle(" Chat History ").
-		SetBorderColor(tcell.ColorCyan)
+		SetBorderColor(tcell.ColorDarkCyan)
 
 	// Instructions
 	instructions := tview.NewTextView().
