@@ -283,7 +283,8 @@ func createChatListModal() *tview.Flex {
 			if index >= 0 {
 				loadChatFromList(index)
 			}
-		})
+		}).
+		SetLabelColor(tcell.ColorBlack)
 
 	deleteButton := tview.NewButton("🗑️ Delete").
 		SetSelectedFunc(func() {
@@ -291,13 +292,15 @@ func createChatListModal() *tview.Flex {
 			if index >= 0 {
 				deleteChatFromList(index)
 			}
-		})
+		}).
+		SetLabelColor(tcell.ColorBlack)
 
 	closeButton := tview.NewButton("❌ Close").
 		SetSelectedFunc(func() {
 			pages.HidePage("chatlist")
 			isShowingChatList = false
-		})
+		}).
+		SetLabelColor(tcell.ColorBlack)
 
 	chatButtonFlex.AddItem(loadButton, 0, 1, false).
 		AddItem(deleteButton, 0, 1, false).
