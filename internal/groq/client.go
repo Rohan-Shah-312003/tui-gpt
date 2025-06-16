@@ -10,7 +10,34 @@ import (
 )
 
 const apiURL = "https://api.groq.com/openai/v1/chat/completions"
-const model = "llama3-70b-8192"
+
+var (
+	currentModel    = "llama3-70b-8192"
+	availableModels = map[string]string{
+		"llama3-70b-8192":                       "Llama 3 70B",
+		"llama3-8b-8192":                        "Llama 3 8B",
+		"mixtral-8x7b-32768":                    "Mixtral 8x7B",
+		"gemma-7b-it":                           "Gemma 7B",
+		"llama3-groq-70b-8192-tool-use-preview": "Llama 3 70B Tools",
+		"llama3-groq-8b-8192-tool-use-preview":  "Llama 3 8B Tools",
+	}
+)
+
+func GetAvailableModels() map[string]string {
+	return availableModels
+}
+
+func GetCurrentModel() string {
+	return currentModel
+}
+
+func SetModel(model string) error {
+	if _, exists := availableModels[model]; !exists {
+		return fmt.Errorf("model %s not available", model)
+	}
+	currentModel = model
+	return nil
+}
 
 func SendPrompt(prompt string) (string, error) {
 	apiKey := os.Getenv("GROQ_API_KEY")
@@ -19,7 +46,7 @@ func SendPrompt(prompt string) (string, error) {
 	}
 
 	payload := Request{
-		Model: model,
+		Model: currentModel,
 		Messages: []Message{
 			{Role: "user", Content: prompt},
 		},
