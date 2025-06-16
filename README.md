@@ -5,12 +5,13 @@ A modern, terminal-based chat interface built with Go that provides a beautiful 
 ## Features
 
 - 🎨 Beautiful colored interface with a clean design
-- 🤖 Real-time chat with AI (using Groq API)
+- 🤖 Real-time chat with AI
 - 📚 Persistent chat history with automatic saving
 - 🔄 Auto-generated chat titles based on content
 - 📝 Quick chat management (new, save, load, delete)
 - 📱 Responsive design that works in any terminal
 - 📝 Comprehensive help system
+- 📋 Model selection interface
 
 ## Installation
 
@@ -27,17 +28,17 @@ cd tui-gpt
 go mod download
 ```
 
-4. Copy the example environment file and add your Groq API key:
+4. Copy the example environment file and configure your settings:
 ```bash
 cp .env.example .env
-# Edit .env and add your Groq API key
+# Edit .env with your configuration
 ```
 
 ## Usage
 
 Run the application:
 ```bash
-go run cmd/main.go
+go run main.go
 ```
 
 ### Keyboard Shortcuts
@@ -64,10 +65,12 @@ go run cmd/main.go
 
 ```
 tui-gpt/
-├── cmd/              # Main application entry point
-├── internal/         # Internal packages
-│   ├── groq/        # Groq API integration
+├── .env              # Environment configuration
+├── go.mod           # Go module definition
+├── go.sum           # Go module dependencies
+├── internal/        # Internal packages
 │   └── storage/     # Chat storage system
+├── main.go          # Application entry point
 ├── ui/              # User interface components
 └── chat_history/    # Stored chat sessions
 ```
