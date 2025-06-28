@@ -12,6 +12,9 @@ import (
 const apiURL = "https://api.groq.com/openai/v1/chat/completions"
 
 var (
+	geminiURL = "https://api.gemini.com/v1/"
+)
+var (
 	currentModel    = "llama3-70b-8192"
 	availableModels = map[string]string{
 		"llama3-70b-8192":                       "Llama 3 70B",

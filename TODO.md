@@ -1,0 +1,2 @@
+- Add copy paste functionality for recieved code blocks.
+- Add UI improvements to chats
