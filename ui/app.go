@@ -24,6 +24,10 @@ type App struct {
 	// State
 	isShowingChatList  bool
 	isShowingModelList bool
+
+	// Enhanced features
+	clipboard      string
+	lastCopiedTime time.Time
 }
 
 func NewApp() *App {
@@ -31,6 +35,7 @@ func NewApp() *App {
 		app:         tview.NewApplication(),
 		pages:       tview.NewPages(),
 		chatHistory: []storage.ChatMessage{},
+		clipboard:   "",
 	}
 }
 
@@ -68,6 +73,21 @@ func (a *App) setupUI() {
 	a.pages.AddPage("modellist", a.modelListModal.Create(), true, false)
 }
 
+// Clipboard functionality
+func (a *App) CopyToClipboard(text string) {
+	a.clipboard = text
+	a.lastCopiedTime = time.Now()
+}
+
+func (a *App) PasteFromClipboard() string {
+	return a.clipboard
+}
+
+func (a *App) GetClipboard() string {
+	return a.clipboard
+}
+
+// Getters and Setters
 func (a *App) GetApp() *tview.Application                     { return a.app }
 func (a *App) GetPages() *tview.Pages                         { return a.pages }
 func (a *App) GetStorageManager() *storage.Storage            { return a.storageManager }

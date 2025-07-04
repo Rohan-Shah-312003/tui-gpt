@@ -48,23 +48,23 @@ func (clm *ChatListModal) Create() *tview.Flex {
 func (clm *ChatListModal) createButtonFlex() *tview.Flex {
 	chatButtonFlex := tview.NewFlex().SetDirection(tview.FlexColumn)
 
-	loadButton := tview.NewButton("📂 Load").SetSelectedFunc(func() {
+	loadButton := tview.NewButton("📂Load").SetSelectedFunc(func() {
 		index := clm.chatList.GetCurrentItem()
 		if index >= 0 {
 			clm.loadChatFromList(index)
 		}
-	})
+	}).SetLabelColor(tcell.ColorBlack).SetStyle(tcell.StyleDefault.Background(tcell.ColorGreen).Foreground(tcell.ColorBlack))
 
-	deleteButton := tview.NewButton("🗑️ Delete").SetSelectedFunc(func() {
+	deleteButton := tview.NewButton("️🗑️Delete").SetSelectedFunc(func() {
 		index := clm.chatList.GetCurrentItem()
 		if index >= 0 {
 			clm.deleteChatFromList(index)
 		}
-	})
+	}).SetLabelColor(tcell.ColorBlack).SetStyle(tcell.StyleDefault.Background(tcell.ColorDarkRed).Foreground(tcell.ColorBlack))
 
-	closeButton := tview.NewButton("❌ Close").SetSelectedFunc(func() {
+	closeButton := tview.NewButton("❌Close").SetSelectedFunc(func() {
 		clm.Hide()
-	})
+	}).SetLabelColor(tcell.ColorBlack).SetStyle(tcell.StyleDefault.Background(tcell.ColorRed).Foreground(tcell.ColorBlack))
 
 	chatButtonFlex.AddItem(loadButton, 0, 1, false).
 		AddItem(deleteButton, 0, 1, false).

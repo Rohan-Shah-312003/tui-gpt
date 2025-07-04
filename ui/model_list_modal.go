@@ -54,11 +54,11 @@ func (mlm *ModelListModal) createButtonFlex() *tview.Flex {
 		if index >= 0 {
 			mlm.selectModel(index)
 		}
-	})
+	}).SetLabelColor(tcell.ColorBlack).SetStyle(tcell.StyleDefault.Background(tcell.ColorGreen).Foreground(tcell.ColorBlack))
 
 	closeButton := tview.NewButton("❌ Close").SetSelectedFunc(func() {
 		mlm.Hide()
-	})
+	}).SetLabelColor(tcell.ColorBlack).SetStyle(tcell.StyleDefault.Background(tcell.ColorRed).Foreground(tcell.ColorBlack))
 
 	modelButtonFlex.AddItem(selectButton, 0, 1, false).AddItem(closeButton, 0, 1, false)
 
