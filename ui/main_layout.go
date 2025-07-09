@@ -5,20 +5,21 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8" // Import for accurate character counting
 
 	"github.com/Rohan-Shah-312003/tui-gpt/internal/groq"
 	"github.com/gdamore/tcell/v2"
-	"github.com/mitchellh/go-wordwrap"
+
 	"github.com/rivo/tview"
 )
 
 type MainLayout struct {
 	app              *App
-	conversationView *tview.TextView
+	conversationView *tview.TextView // This will hold all chat messages as a single, formatted string
 	inputField       *tview.InputField
 	statusBar        *tview.TextView
 	sidebar          *tview.TextView
-	messageContainer *tview.Flex
+	// messageContainer *tview.Flex // Removed: No longer needed for individual bubbles
 }
 
 func NewMainLayout(app *App) *MainLayout {
@@ -30,7 +31,7 @@ func NewMainLayout(app *App) *MainLayout {
 func (ml *MainLayout) Create() *tview.Flex {
 	header := ml.createHeader()
 	ml.sidebar = ml.createSidebar()
-	ml.conversationView = ml.createConversationView()
+	ml.conversationView = ml.createConversationView() // Now returns a TextView
 	ml.inputField = ml.createInputField()
 	buttonFlex := ml.createButtonFlex()
 	ml.statusBar = ml.createStatusBar()
@@ -40,7 +41,7 @@ func (ml *MainLayout) Create() *tview.Flex {
 		AddItem(buttonFlex, 3, 1, false)
 
 	mainContent := tview.NewFlex().SetDirection(tview.FlexColumn).
-		AddItem(ml.conversationView, 0, 4, false).
+		AddItem(ml.conversationView, 0, 4, false). // conversationView is the scrollable wrapper
 		AddItem(ml.sidebar, 30, 1, false)
 
 	mainLayout := tview.NewFlex().SetDirection(tview.FlexRow).
@@ -80,12 +81,14 @@ func (ml *MainLayout) createSidebar() *tview.TextView {
 	return sidebar
 }
 
+// createConversationView returns a TextView that will display all messages.
 func (ml *MainLayout) createConversationView() *tview.TextView {
 	conversationView := tview.NewTextView().
 		SetDynamicColors(true).
 		SetScrollable(true).
-		SetWordWrap(true).
-		SetRegions(true)
+		SetWordWrap(true). // Keep word wrap TRUE here!
+		SetRegions(true).  // Enable regions for potential future highlighting
+		SetMaxLines(0)     // Allow unlimited lines
 
 	conversationView.SetBorder(true).
 		SetTitle(" 💬 Conversation ").
@@ -118,9 +121,11 @@ func (ml *MainLayout) createConversationView() *tview.TextView {
 		return event
 	})
 
-	// Set focus change function to handle scrolling
+	// Set a changed func to ensure it always scrolls to end when new content is added
 	conversationView.SetChangedFunc(func() {
-		ml.app.app.Draw()
+		ml.app.app.QueueUpdateDraw(func() {
+			ml.conversationView.ScrollToEnd()
+		})
 	})
 
 	return conversationView
@@ -193,6 +198,19 @@ func (ml *MainLayout) createStatusBar() *tview.TextView {
 	return statusBar
 }
 
+// stripANSICodes removes Tview color tags from a string.
+func stripANSICodes(s string) string {
+	re := regexp.MustCompile(`\[[^\]]*\]`)
+	return re.ReplaceAllString(s, "")
+}
+
+// runeCountInString counts the number of runes in a string, effectively ignoring Tview color tags
+func runeCountInString(s string) int {
+	return utf8.RuneCountInString(stripANSICodes(s))
+}
+
+// formatCodeBlocks formats code blocks, inline code, bold, and italic text.
+// It uses only foreground and specific background for code sections, no full-line backgrounds.
 func (ml *MainLayout) formatCodeBlocks(text string) string {
 	codeBlockRegex := regexp.MustCompile("```([a-zA-Z]*)\\n([\\s\\S]*?)\\n```")
 
@@ -205,216 +223,93 @@ func (ml *MainLayout) formatCodeBlocks(text string) string {
 		language := parts[1]
 		code := parts[2]
 
-		// Create language label
 		langLabel := ""
 		if language != "" {
-			langLabel = fmt.Sprintf("  %s  ", strings.ToUpper(language))
+			langLabel = fmt.Sprintf(" %s ", strings.ToUpper(language))
 		} else {
-			langLabel = "  CODE  "
+			langLabel = " CODE "
 		}
 
-		// Calculate code block width
-		lines := strings.Split(code, "\n")
-		maxWidth := len(langLabel) + 4 // minimum width for header
-		for _, line := range lines {
-			if len(line) > maxWidth {
-				maxWidth = len(line)
-			}
-		}
-		maxWidth += 4 // padding
-
-		// Create rounded code block
 		var result strings.Builder
-		result.WriteString(fmt.Sprintf("\n[black:lightgray]%s[white:black]\n",
-			strings.Repeat(" ", maxWidth)))
-		result.WriteString(fmt.Sprintf("[black:lightgray]%s%s%s[white:black]\n",
-			strings.Repeat(" ", (maxWidth-len(langLabel))/2),
-			langLabel,
-			strings.Repeat(" ", maxWidth-(maxWidth-len(langLabel))/2-len(langLabel))))
-		result.WriteString(fmt.Sprintf("[black:lightgray]%s[white:black]\n",
-			strings.Repeat(" ", maxWidth)))
-
-		// Add code lines with background
-		for _, line := range lines {
-			if strings.TrimSpace(line) == "" {
-				result.WriteString(fmt.Sprintf("[black:darkgray]%s[white:black]\n",
-					strings.Repeat(" ", maxWidth)))
-			} else {
-				padding := maxWidth - len(line) - 4
-				if padding < 0 {
-					padding = 0
-				}
-				result.WriteString(fmt.Sprintf("[white:darkgray]  %s%s  [white:black]\n",
-					line, strings.Repeat(" ", padding)))
-			}
+		// Simple header for code block
+		result.WriteString(fmt.Sprintf("\n[black:lightgray]%s[white:black]\n", langLabel))
+		// Code lines with dark gray background and white foreground
+		for _, line := range strings.Split(code, "\n") {
+			result.WriteString(fmt.Sprintf("[white:darkgray]%s[white:black]\n", line))
 		}
-
-		result.WriteString(fmt.Sprintf("[black:lightgray]%s[white:black]\n",
-			strings.Repeat(" ", maxWidth)))
+		// Simple footer for code block
+		result.WriteString(fmt.Sprintf("[black:lightgray]%s[white:black]\n", strings.Repeat(" ", runeCountInString(langLabel))))
 
 		return result.String()
 	})
 
-	// Format inline code with better styling
 	inlineCodeRegex := regexp.MustCompile("`([^`]+)`")
 	formatted = inlineCodeRegex.ReplaceAllString(formatted, "[black:lightgray] $1 [white:black]")
 
-	// Format **bold** text
 	boldRegex := regexp.MustCompile(`\*\*([^*]+)\*\*`)
 	formatted = boldRegex.ReplaceAllString(formatted, "[::b]$1[::-]")
 
-	// Format *italic* text
 	italicRegex := regexp.MustCompile(`\*([^*]+)\*`)
 	formatted = italicRegex.ReplaceAllString(formatted, "[::i]$1[::-]")
 
 	return formatted
 }
 
-func (ml *MainLayout) createModernChatBubble(role, content, timestamp string) string {
-	// Get the available width for the text
-	_, _, width, _ := ml.conversationView.GetRect()
-	maxBubbleWidth := width - 20 // Leave space for margins and alignment
-	if maxBubbleWidth < 40 {
-		maxBubbleWidth = 40
-	}
-
-	// Format and process the content
-	formattedContent := ml.formatCodeBlocks(content)
-	cleanContent := strings.TrimSpace(formattedContent)
-
-	// Determine bubble properties based on role
-	var bubbleColor, alignmentSpaces string
-	var isRightAligned bool
+// formatChatMessage prepares a message for display as plain text with role, content, and timestamp.
+// No "bubbles" (solid background blocks) are created.
+func (ml *MainLayout) formatChatMessage(role, content, timestamp string) string {
+	var rolePrefix, contentFgColor, timestampFgColor string
 
 	switch role {
 	case "user":
-		bubbleColor = "[white:blue]"
-		// textColor = "[white:blue]"
-		isRightAligned = true
+		rolePrefix = "You:"
+		contentFgColor = "white"  // User text in white
+		timestampFgColor = "gray" // Timestamp in gray
 	case "assistant":
-		bubbleColor = "[black:lightgray]"
-		// textColor = "[black:lightgray]"
-		isRightAligned = false
+		rolePrefix = "AI:"
+		contentFgColor = "white"      // Changed from "lightcyan" to "white" to remove highlighting
+		timestampFgColor = "darkgray" // Timestamp in dark gray
 	case "error":
-		bubbleColor = "[white:red]"
-		// textColor = "[white:red]"
-		isRightAligned = false
+		rolePrefix = "Error:"
+		contentFgColor = "red"
+		timestampFgColor = "darkred"
 	default:
-		bubbleColor = "[black:yellow]"
-		// textColor = "[black:yellow]"
-		isRightAligned = false
+		rolePrefix = "System:"
+		contentFgColor = "yellow"
+		timestampFgColor = "orange"
 	}
 
-	// Wrap content to fit in bubble
-	contentWidth := maxBubbleWidth - 6 // Account for padding and bubble edges
+	var messageBuilder strings.Builder
 
-	// Split into paragraphs and wrap each
-	paragraphs := strings.Split(cleanContent, "\n\n")
-	var wrappedParagraphs []string
+	// Add a newline for separation before each message
+	messageBuilder.WriteString("\n")
 
-	for _, p := range paragraphs {
-		if strings.Contains(p, "[black:lightgray]") || strings.Contains(p, "[white:darkgray]") {
-			// This is a code block, don't wrap it
-			wrappedParagraphs = append(wrappedParagraphs, p)
-		} else {
-			// Regular text paragraph
-			singleLine := strings.ReplaceAll(p, "\n", " ")
-			wrapped := wordwrap.WrapString(singleLine, uint(contentWidth))
-			wrappedParagraphs = append(wrappedParagraphs, wrapped)
-		}
-	}
+	// Role prefix (e.g., "You:", "AI:")
+	messageBuilder.WriteString(fmt.Sprintf("[::b]%s[::-]", rolePrefix))
 
-	processedContent := strings.Join(wrappedParagraphs, "\n\n")
-	contentLines := strings.Split(processedContent, "\n")
+	// Timestamp - appended to the role line or below if it doesn't fit
+	// For simplicity, let's put it on a new line below the content for clarity
+	// and to ensure it doesn't interfere with word wrapping of the main content.
+	// timestampFormatted := fmt.Sprintf("[%s]%s[::-]", timestampFgColor, timestamp)
 
-	// Calculate actual bubble width based on content
-	actualBubbleWidth := 0
-	for _, line := range contentLines {
-		// Remove color codes for width calculation
-		cleanLine := regexp.MustCompile(`\[[^\]]*\]`).ReplaceAllString(line, "")
-		lineWidth := len(cleanLine) + 6 // Add padding
-		if lineWidth > actualBubbleWidth {
-			actualBubbleWidth = lineWidth
-		}
-	}
+	// Main content with its color
+	formattedContent := ml.formatCodeBlocks(content) // Apply code block formatting here
 
-	if actualBubbleWidth > maxBubbleWidth {
-		actualBubbleWidth = maxBubbleWidth
-	}
-	if actualBubbleWidth < 20 {
-		actualBubbleWidth = 20
-	}
+	// Add content
+	messageBuilder.WriteString(fmt.Sprintf(" [%s]%s[::-]\n", contentFgColor, formattedContent))
 
-	// Calculate alignment spacing
-	if isRightAligned {
-		alignmentSpaces = strings.Repeat(" ", width-actualBubbleWidth-10)
-	} else {
-		alignmentSpaces = "  " // Small left margin for assistant messages
-	}
+	// Add timestamp on a new line, right-aligned within the *available space*
+	// This will not have a solid background, just text color.
+	_, _, viewWidth, _ := ml.conversationView.GetRect()
+	effectiveWidth := viewWidth - 4 // Account for conversationView borders
 
-	// Build the modern chat bubble
-	var bubble strings.Builder
+	timestampText := fmt.Sprintf("[%s]%s[::-]", timestampFgColor, timestamp)
+	timestampPadded := strings.Repeat(" ", effectiveWidth-runeCountInString(timestampText)) + timestampText
+	messageBuilder.WriteString(timestampPadded)
 
-	// Add some vertical spacing
-	bubble.WriteString("\n")
+	messageBuilder.WriteString("\n") // Newline after message for next one or spacing
 
-	// Create rounded top
-	bubble.WriteString(fmt.Sprintf("%s%s%s%s[white:black]\n",
-		alignmentSpaces,
-		bubbleColor,
-		strings.Repeat(" ", actualBubbleWidth),
-		""))
-
-	// Add content lines
-	for _, line := range contentLines {
-		// Remove color codes for padding calculation
-		cleanLine := regexp.MustCompile(`\[[^\]]*\]`).ReplaceAllString(line, "")
-
-		// Handle different line types
-		if strings.Contains(line, "[black:lightgray]") || strings.Contains(line, "[white:darkgray]") {
-			// Code block line - preserve as is
-			bubble.WriteString(fmt.Sprintf("%s%s[white:black]\n", alignmentSpaces, line))
-		} else {
-			// Regular text line
-			padding := actualBubbleWidth - len(cleanLine) - 6
-			if padding < 0 {
-				padding = 0
-			}
-
-			bubble.WriteString(fmt.Sprintf("%s%s   %s%s   %s[white:black]\n",
-				alignmentSpaces,
-				bubbleColor,
-				line,
-				strings.Repeat(" ", padding),
-				""))
-		}
-	}
-
-	// Add timestamp line
-	timestampText := fmt.Sprintf("  %s  ", timestamp)
-	timestampPadding := actualBubbleWidth - len(timestampText)
-	if timestampPadding < 0 {
-		timestampPadding = 0
-	}
-
-	bubble.WriteString(fmt.Sprintf("%s%s%s%s%s[white:black]\n",
-		alignmentSpaces,
-		"[dim]"+bubbleColor,
-		strings.Repeat(" ", timestampPadding/2),
-		timestampText,
-		strings.Repeat(" ", timestampPadding-timestampPadding/2)))
-
-	// Create rounded bottom
-	bubble.WriteString(fmt.Sprintf("%s%s%s%s[white:black]\n",
-		alignmentSpaces,
-		bubbleColor,
-		strings.Repeat(" ", actualBubbleWidth),
-		""))
-
-	// Add spacing after bubble
-	bubble.WriteString("\n")
-
-	return bubble.String()
+	return messageBuilder.String()
 }
 
 func (ml *MainLayout) updateConversationView() {
@@ -423,41 +318,27 @@ func (ml *MainLayout) updateConversationView() {
 	// Clear existing content
 	ml.conversationView.Clear()
 
-	if len(chatHistory) == 0 {
-		// Create an attractive welcome message
-		var welcome strings.Builder
-
-		// Welcome message with modern styling
-		welcome.WriteString("\n\n")
-		welcome.WriteString("                    [white:blue]                                      [white:black]\n")
-		welcome.WriteString("                    [white:blue]     🌟 Welcome to TUI-GPT! 🌟     [white:black]\n")
-		welcome.WriteString("                    [white:blue]                                      [white:black]\n")
-		welcome.WriteString("\n")
-		welcome.WriteString("                    [black:lightgray]                                      [white:black]\n")
-		welcome.WriteString("                    [black:lightgray]   ✨ Ready to chat! Start typing...   [white:black]\n")
-		welcome.WriteString("                    [black:lightgray]   Press Ctrl+H for help & shortcuts   [white:black]\n")
-		welcome.WriteString("                    [black:lightgray]                                      [white:black]\n")
-		welcome.WriteString("\n\n")
-
-		ml.conversationView.SetText(welcome.String())
-		return
-	}
-
-	// Build the conversation text with modern bubbles
+	// Build the conversation text
 	var conversation strings.Builder
 
-	// Add a small top margin
-	conversation.WriteString("\n")
+	if len(chatHistory) == 0 {
+		// Welcome message - simplified to plain text, no full backgrounds
+		welcomeMsg := `
+[::b]🌟 Welcome to TUI-GPT! 🌟[::-]
 
-	// Add chat messages with modern bubbles
-	for _, msg := range chatHistory {
-		timestamp := msg.Timestamp.Format("15:04")
-		modernBubble := ml.createModernChatBubble(msg.Role, msg.Content, timestamp)
-		conversation.WriteString(modernBubble)
+✨ Ready to chat! Start typing...
+
+[yellow]Press Ctrl+H for help & shortcuts[::-]
+`
+		conversation.WriteString(welcomeMsg)
+	} else {
+		// Add chat messages as formatted text lines
+		for _, msg := range chatHistory {
+			timestamp := msg.Timestamp.Format("15:04")
+			formattedMessage := ml.formatChatMessage(msg.Role, msg.Content, timestamp)
+			conversation.WriteString(formattedMessage)
+		}
 	}
-
-	// Add bottom margin
-	conversation.WriteString("\n\n")
 
 	// Set the text and scroll to the bottom
 	ml.conversationView.SetText(conversation.String())
@@ -553,9 +434,10 @@ func (ml *MainLayout) copySelectedText() {
 		chatHistory := ml.app.GetChatHistory()
 		if len(chatHistory) > 0 {
 			lastMsg := chatHistory[len(chatHistory)-1]
-			ml.app.clipboard = lastMsg.Content
+			// Strip Tview color codes for clipboard content
+			ml.app.clipboard = stripANSICodes(lastMsg.Content)
 		} else {
-			ml.app.clipboard = conversationText
+			ml.app.clipboard = stripANSICodes(conversationText)
 		}
 
 		ml.updateStatus("[green]📋 Text copied to clipboard!")
